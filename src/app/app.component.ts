@@ -1,5 +1,6 @@
 import { Component } from '@angular/core';
 import { categoriesPath, expensesPath } from './shared/routes';
+import { AuthService } from './shared/service/auth.service';
 
 @Component({
   selector: 'app-root',
@@ -8,9 +9,9 @@ import { categoriesPath, expensesPath } from './shared/routes';
 })
 export class AppComponent {
   readonly appPages = [
-    { title: 'Expenses', url: `/${expensesPath}`, icon: 'podium' },
-    { title: 'Categories', url: `/${categoriesPath}`, icon: 'pricetag' },
+    {title: 'Expenses', url: `/${expensesPath}`, icon: 'podium'},
+    {title: 'Categories', url: `/${categoriesPath}`, icon: 'pricetag'},
   ];
 
-  constructor() {}
+  constructor(readonly authService: AuthService) {}
 }
