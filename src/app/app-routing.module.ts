@@ -26,7 +26,7 @@ const routes: Routes = [
     path: loginPath,
     component: LoginComponent
   },
-  {
+    {
     path: '**',
     redirectTo: defaultPath,
   },
