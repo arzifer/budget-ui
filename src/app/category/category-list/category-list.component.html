@@ -22,7 +22,9 @@
         <ion-item>
           <ion-icon name="swap-vertical" slot="start"></ion-icon>
           <ion-select interface="popover" formControlName="sort">
-            <ion-select-option *ngFor="let sortOption of sortOptions" [value]="sortOption.value"></ion-select-option>
+            <ion-select-option *ngFor="let sortOption of sortOptions" [value]="sortOption.value">
+              {{sortOption.label}}
+            </ion-select-option>
           </ion-select>
         </ion-item>
       </ion-col>

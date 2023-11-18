@@ -4,13 +4,19 @@ import { filter, from } from 'rxjs';
 import { CategoryModalComponent } from '../../category/category-modal/category-modal.component';
 import { ActionSheetService } from '../../shared/service/action-sheet.service';
 import { FormBuilder, FormGroup, Validators} from "@angular/forms";
-import {Category} from "../../shared/domain";
+import {Category, SortOption} from "../../shared/domain";
 
 @Component({
   selector: 'app-expense-modal',
   templateUrl: './expense-modal.component.html',
 })
 export class ExpenseModalComponent {
+  readonly sortOptions: SortOption[] = [
+    { label: 'Created at (newest first)', value: 'createdAt,desc' },
+    { label: 'Created at (oldest first)', value: 'createdAt,asc' },
+    { label: 'Name (A-Z)', value: 'name,asc' },
+    { label: 'Name (Z-A)', value: 'name,desc' },
+  ];
   // readonly categoryForm: FormGroup;
   // submitting = false;
   // category: Category = {} as Category;
