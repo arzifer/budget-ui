@@ -100,7 +100,7 @@ export class ExpenseModalComponent {
   }
 
   async showCategoryModal(): Promise<void> {
-    const categoryModal = await this.modalCtrl.create({component: CategoryModalComponent});
+    const categoryModal = await this.modalCtrl.create({component: CategoryModalComponent, componentProps: { category: this.categories },});
     categoryModal.present();
     const {role} = await categoryModal.onWillDismiss();
     console.log('role', role);

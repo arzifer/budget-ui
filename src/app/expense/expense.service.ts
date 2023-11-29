@@ -11,8 +11,8 @@ import { environment } from '../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
 export class ExpenseService {
-  private readonly apiUrl = `${environment.backendUrl}/categories`;
-  private readonly apiV2Url = `${environment.backendUrl}/v2/categories`;
+  private readonly apiUrl = `${environment.backendUrl}/expenses`;
+  private readonly apiV2Url = `${environment.backendUrl}/v2/expenses`;
 
   constructor(private readonly httpClient: HttpClient) {}
 

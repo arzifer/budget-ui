@@ -34,7 +34,7 @@ export class ExpenseListComponent {
     private readonly toastService: ToastService,
     private readonly formBuilder: FormBuilder) {}
 
-/**  private loadExpenses(next: () => void = () => {}): void {
+private loadExpenses(next: () => void = () => {}): void {
     if (!this.searchCriteria.name) delete this.searchCriteria.name;
     this.loading = true;
     this.expenseService
@@ -53,9 +53,9 @@ export class ExpenseListComponent {
         },
         error: (error) => this.toastService.displayErrorToast('Could not load expenses', error),
       });
-  } */
+  }
 
-private loadExpenses(next: () => void = () => {}): void {
+/** private loadExpenses(next: () => void = () => {}): void {
     this.searchCriteria.yearMonth = formatPeriod(this.date);
     if (!this.searchCriteria.categoryIds?.length) delete this.searchCriteria.categoryIds;
     if (!this.searchCriteria.name) delete this.searchCriteria.name;
@@ -93,7 +93,8 @@ private loadExpenses(next: () => void = () => {}): void {
         });
 }
 
-    private sortExpenses = (expenses: Expense[]): Expense[] => expenses.sort((a, b) => a.name.localeCompare(b.name));
+    private sortExpenses = (expenses: Expense[]): Expense[] => expenses.sort((a, b) => a.name.localeCompare(b.name)); */
+
     loadNextExpensePage($event: any) {
         this.searchCriteria.page++;
         this.loadExpenses(() => ($event as InfiniteScrollCustomEvent).target.complete());
@@ -119,6 +120,6 @@ private loadExpenses(next: () => void = () => {}): void {
         modal.present();
         const { role } = await modal.onWillDismiss();
         if (role === 'refresh') this.reloadExpenses();
-        console.log('role', role);
+        // console.log('role', role);
     }
 }
