@@ -1,10 +1,13 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import {catchError, Observable, throwError} from 'rxjs';
 import {
-    Expense,
+  AllCategoryCriteria,
+  AllExpenseCriteria,
+  Category,
+  CategoryCriteria,
+  Expense,
   ExpenseCriteria,
-  ExpenseUpsertDto,
   Page
 } from '../shared/domain';
 import { environment } from '../../environments/environment';
@@ -18,15 +21,27 @@ export class ExpenseService {
 
   // Read
 
-  getExpenses = (pagingCriteria: ExpenseCriteria): Observable<Page<Expense>> =>
-    this.httpClient.get<Page<Expense>>(this.apiUrl, { params: new HttpParams({ fromObject: { ...pagingCriteria } }) });
+    getExpenses(criteria: ExpenseCriteria): Observable<Page<Expense>> {
+      return this.httpClient.get<Page<Expense>>(this.apiUrl, {params: new HttpParams({fromObject: {...criteria}})})
+          .pipe(
+              catchError(this.handleError)
+          );
+  };
 
+    private handleError(error: any): Observable<never> {
+        console.error('An error occurred:', error);
+        return throwError('Something went wrong; please try again later.');
+    }
+
+  getAllExpenses = (sortCriteria: AllExpenseCriteria): Observable<Expense[]> =>
+    this.httpClient.get<Expense[]>(this.apiV2Url, { params: new HttpParams({ fromObject: { ...sortCriteria } }) });
 
   // Create & Update
 
-  upsertExpense = (expense: ExpenseUpsertDto): Observable<void> => this.httpClient.put<void>(this.apiUrl, expense);
+  upsertExpense = (expense: Expense): Observable<void> => this.httpClient.put<void>(this.apiUrl, expense);
 
   // Delete
 
-  deleteExpenses = (id: string): Observable<void> => this.httpClient.delete<void>(`${this.apiUrl}/${id}`);
+  deleteExpense = (id: string): Observable<void> => this.httpClient.delete<void>(`${this.apiUrl}/${id}`);
 }
+

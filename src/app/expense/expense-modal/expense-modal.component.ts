@@ -1,115 +1,128 @@
 import {Component, OnInit} from '@angular/core';
-import { ModalController } from '@ionic/angular';
-import { filter, from } from 'rxjs';
-import { CategoryModalComponent } from '../../category/category-modal/category-modal.component';
-import { ActionSheetService } from '../../shared/service/action-sheet.service';
-import { FormBuilder, FormGroup, Validators} from "@angular/forms";
-import {Category, ExpenseUpsertDto, SortOption} from "../../shared/domain";
+import {IonDatetime, ModalController, RefresherCustomEvent} from '@ionic/angular';
+import {filter, finalize, from, mergeMap, tap} from 'rxjs';
+import {ActionSheetService} from '../../shared/service/action-sheet.service';
+import {Category, CategoryCriteria, Expense} from "../../shared/domain";
 import {ExpenseService} from "../expense.service";
+import {FormBuilder, FormGroup, Validators} from "@angular/forms";
 import {ToastService} from "../../shared/service/toast.service";
 import {CategoryService} from "../../category/category.service";
-import {formatISO, parseISO} from "date-fns";
-import {ExpenseDatePickerModalComponent} from "../expense-datepicker/expense-datepicker-modal.component";
+import {CategoryModalComponent} from "../../category/category-modal/category-modal.component";
+import {DatePipe} from "@angular/common";
 
 @Component({
-  selector: 'app-expense-modal',
-  templateUrl: './expense-modal.component.html',
+    selector: 'app-expense-modal',
+    templateUrl: './expense-modal.component.html',
 })
-export class ExpenseModalComponent {
+export class ExpenseModalComponent implements OnInit{
+    readonly expenseForm: FormGroup;
+    submitting = false;
+    expense: Expense = {} as Expense;
+    readonly initialSort = 'name,asc';
+    searchCriteria: CategoryCriteria = {page: 0, size: 25, sort: this.initialSort};
+    categories: Category[] = [];
+    datePipe = new DatePipe('en-US');
 
-  readonly expenseForm: FormGroup;
-  submitting = false;
-  expense: ExpenseUpsertDto = {amount: 0, categoryId: '', date: '', name: ''}
-  categories: Category[] = [];
-  openDatePicker() {
-    this.modalController.create({
-      component: ExpenseDatePickerModalComponent,
-      componentProps: {
-        selectedDate: this.expense.date,
-      },
-      cssClass: 'expense-date-picker-modal',
-    }).then(modal => {
-      modal.present();
-    });
-  }
-    updateExpenseDate(newDate: string | string[] | undefined) {
-        console.log('New Date:', newDate);
-        if (newDate !== undefined) {
-            const dateString = Array.isArray(newDate) ? newDate[0] : newDate;
+    constructor(
+        private readonly actionSheetService: ActionSheetService,
+        private readonly expenseService: ExpenseService,
+        private readonly formBuilder: FormBuilder,
+        private readonly modalCtrl: ModalController,
+        private readonly toastService: ToastService,
+        private readonly categoryService: CategoryService,
+        private modalController: ModalController,
+    ) {
+        this.expenseForm = this.formBuilder.group({
+            id: [],
+            name: ['', [Validators.required, Validators.maxLength(40)]],
+            categoryId: [this.expense.categoryId],
+            date: [this.datePipe.transform(Date.now(), 'yyyy-MM-ddThh:mm:ss')],
+            amount: [''],
+        });
+    }
 
-            this.expenseForm.patchValue({
-                date: dateString,
+    ngOnInit(): void {
+        this.loadCategories();
+        this.initializeExpenseCategory();
+    }
+    private initializeExpenseCategory(): void {
+        this.expense.categoryId = this.expense.category.id;
+    }
+
+    async loadCategories() {
+        console.log("load");
+        this.categoryService.getAllCategories({name:'', sort: 'name,asc'}).subscribe({
+            next: (categories) => {
+                this.categories.push(...categories);
+            },
+            error: (error) => this.toastService.displayErrorToast('Could not load categories', error),
+        });
+    }
+
+    cancel(): void {
+        this.modalCtrl.dismiss(null, 'cancel');
+    }
+
+    save(): void {
+        this.submitting = true;
+        let exp = this.expenseForm.value as Expense;
+        this.expenseService
+            .upsertExpense(exp)
+            .pipe(finalize(() => (this.submitting = false)))
+            .subscribe({
+                next: () => {
+                    this.toastService.displaySuccessToast('Expense saved');
+                    this.modalCtrl.dismiss(null, 'refresh');
+                },
+                error: (error) => this.toastService.displayErrorToast('Could not save expense', error),
             });
+    }
+
+    delete(): void {
+        from(this.actionSheetService.showDeletionConfirmation('Are you sure you want to delete this expense?'))
+            .pipe(
+                filter((action) => action === 'delete'),
+                tap(() => (this.submitting = true)),
+                mergeMap(() => this.expenseService.deleteExpense(this.expense.id!)),
+                finalize(() => (this.submitting = false)),
+            )
+            .subscribe({
+                next: () => {
+                    this.toastService.displaySuccessToast('Expense deleted');
+                    this.modalCtrl.dismiss(null, 'refresh');
+                },
+                error: (error) => this.toastService.displayErrorToast('Could not delete expense', error),
+            });
+    }
+
+
+
+
+    ionViewWillEnter(): void {
+        this.expenseForm.patchValue(this.expense);
+
+
+    }
+
+
+
+    async reloadCategories($event?: RefresherCustomEvent): Promise<void> {
+        this.searchCriteria.page = 0;
+        await this.loadCategories();
+        if ($event) {
+            await $event.target.complete();
         }
     }
 
 
-  constructor(
-    private modalController: ModalController,
-    private readonly actionSheetService: ActionSheetService,
-    private readonly modalCtrl: ModalController,
-    private readonly formBuilder: FormBuilder,
-    private readonly expenseService: ExpenseService,
-    private readonly toastService: ToastService,
-    private readonly categoryService: CategoryService
-  ) {
-    this.expenseForm = this.formBuilder.group({
-      id: [this.expense.id], // hidden
-      amount: [this.expense.amount, [Validators.required]],
-      categoryId: [this.expense.categoryId, [Validators.required]],
-      date: [formatISO(new Date()), [Validators.required]],
-      name: [this.expense.name, [Validators.required, Validators.maxLength(40)]],
-    });
-  }
 
-  private loadAllCategories(): void {
-    this.categoryService.getAllCategories({ sort: 'name,asc' }).subscribe({
-      next: (categories) => (this.categories = categories),
-      error: (error) => this.toastService.displayErrorToast('Could not load categories', error),
-    });
-  }
-  ionViewWillEnter(): void {
-    this.loadAllCategories();
-  }
+    async openCategoryModal() {
+        const categoryModal = await this.modalController.create({
+            component: CategoryModalComponent
+        });
+        await categoryModal.present();
 
-  cancel(): void {
-    this.modalCtrl.dismiss(null, 'cancel');
-  }
+    }
 
-  save(): void {
-      console.log('Form Value:', this.expenseForm.value);
 
-      if (this.expenseForm.invalid) {
-          console.log('Form is invalid. Cannot submit.');
-          return;
-      }
-       this.modalCtrl.dismiss(null, 'save');
-    this.expenseService
-        .upsertExpense({
-          ...this.expenseForm.value,
-          date: formatISO(parseISO(this.expenseForm.value.date), { representation: 'date' }),
-        })
-      .subscribe(
-      );
-  }
-
-  delete(): void {
-    from(this.actionSheetService.showDeletionConfirmation('Are you sure you want to delete this expense?'))
-      .pipe(filter((action) => action === 'delete'))
-      .subscribe(() => this.modalCtrl.dismiss(null, 'delete'));
-  }
-
-  async showCategoryModal(): Promise<void> {
-    const categoryModal = await this.modalCtrl.create({component: CategoryModalComponent, componentProps: { category: this.categories },});
-    categoryModal.present();
-    const {role} = await categoryModal.onWillDismiss();
-    console.log('role', role);
-  }
-
-  async openCategoryModal() {
-    const categoryModal = await this.modalController.create({
-      component: CategoryModalComponent,
-    });
-    await categoryModal.present();
-  }
 }

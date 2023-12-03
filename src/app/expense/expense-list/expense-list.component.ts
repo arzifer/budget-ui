@@ -1,99 +1,145 @@
-import { Component } from '@angular/core';
+import {Component, OnInit} from '@angular/core';
 import { addMonths, set } from 'date-fns';
 import {InfiniteScrollCustomEvent, ModalController, RefresherCustomEvent} from '@ionic/angular';
 import { ExpenseModalComponent } from '../expense-modal/expense-modal.component';
-import {Category, Expense, ExpenseCriteria} from '../../shared/domain';
-import {CategoryService} from "../../category/category.service";
-import {ToastService} from "../../shared/service/toast.service";
-import {FormBuilder} from "@angular/forms";
-import {ExpenseService} from "../expense.service";
-import {finalize, from, groupBy, mergeMap, toArray} from "rxjs";
-import {CategoryModalComponent} from "../../category/category-modal/category-modal.component";
-import {formatPeriod} from "../../shared/period";
+import {Category, Expense, ExpenseCriteria, Page, SortOption} from '../../shared/domain';
+import { CategoryService } from '../../category/category.service';
+import { ToastService } from '../../shared/service/toast.service';
+import { ExpenseService } from '../expense.service';
+import { debounce, finalize, interval, Subscription } from 'rxjs';
+import { FormBuilder, FormGroup } from '@angular/forms';
+import {DatePipe} from "@angular/common";
 
-interface ExpenseGroup {
-    date: string;
-    expenses: Expense[];
-}
 @Component({
-  selector: 'app-expense-list',
-  templateUrl: './expense-list.component.html',
+    selector: 'app-expense-overview',
+    templateUrl: './expense-list.component.html',
 })
-export class ExpenseListComponent {
-  date = set(new Date(), { date: 1 });
-    expenses: Expense[] | null = null;
-    readonly initialSort = 'id,asc';
+export class ExpenseListComponent implements OnInit{
+    date = set(new Date(), { date: 1 });
+    currentMonth: Date = new Date();
+    datePipe: DatePipe = new DatePipe('en-US');
+    categories: Category[] = [];
+    expenses: Expense[] = [];
+    readonly initialSort = 'date,desc';
     lastPageReached = false;
     loading = false;
-    searchCriteria: ExpenseCriteria = { page: 0, size: 25, sort: this.initialSort };
-    expenseGroups: ExpenseGroup[] | null = null;
+    searchCriteria: ExpenseCriteria = { page: 0, size: 25, yearMonth: +(this.datePipe.transform(this.currentMonth, 'yyyyMM'))!, sort: this.initialSort};
+    readonly searchForm: FormGroup;
+    readonly sortOptions: SortOption[] = [
+        { label: 'Created at (newest first)', value: 'createdAt,desc' },
+        { label: 'Created at (oldest first)', value: 'createdAt,asc' },
+        { label: 'Date (newest first)', value: 'date,desc' },
+        { label: 'Date (oldest first)', value: 'date,asc' },
+        { label: 'Name (A-Z)', value: 'name,asc' },
+        { label: 'Name (Z-A)', value: 'name,desc' },
+    ];
+    private searchFormSubscription: Subscription;
 
-  constructor(
-    private readonly modalCtrl: ModalController,
-    private readonly expenseService: ExpenseService,
-    private readonly toastService: ToastService,
-    private readonly formBuilder: FormBuilder) {}
+    constructor(
+        private readonly modalCtrl: ModalController,
+        private readonly categoryService: CategoryService,
+        private readonly expenseService: ExpenseService,
+        private readonly toastService: ToastService,
+        private readonly formBuilder: FormBuilder
+    ) {
+        this.searchForm = this.formBuilder.group({ name: [], categoryIds: [''], sort: [this.initialSort] });
+        this.searchFormSubscription = this.searchForm.valueChanges
+            .pipe(debounce((value) => interval(value.name?.length ? 400 : 0)))
+            .subscribe((value) => {
+                this.searchCriteria = { ...this.searchCriteria, ...value, page: 0 };
+                this.loadExpenses();
+            });
 
-private loadExpenses(next: () => void = () => {}): void {
-    if (!this.searchCriteria.name) delete this.searchCriteria.name;
-    this.loading = true;
-    this.expenseService
-      .getExpenses(this.searchCriteria)
-      .pipe(
-        finalize(() => {
-          this.loading = false;
-          next();
-        }),
-      )
-      .subscribe({
-        next: (expenses) => {
-          if (this.searchCriteria.page === 0 || !this.expenses) this.expenses = [];
-          this.expenses.push(...expenses.content);
-          this.lastPageReached = expenses.last;
-        },
-        error: (error) => this.toastService.displayErrorToast('Could not load expenses', error),
-      });
-  }
 
-/** private loadExpenses(next: () => void = () => {}): void {
-    this.searchCriteria.yearMonth = formatPeriod(this.date);
-    if (!this.searchCriteria.categoryIds?.length) delete this.searchCriteria.categoryIds;
-    if (!this.searchCriteria.name) delete this.searchCriteria.name;
-    this.loading = true;
-    const groupByDate = this.searchCriteria.sort.startsWith('date');
-    this.expenseService
-        .getExpenses(this.searchCriteria)
-        .pipe(
-            finalize(() => (this.loading = false)),
-            mergeMap((expensePage) => {
-                this.lastPageReached = expensePage.last;
-                next();
-                if (this.searchCriteria.page === 0 || !this.expenseGroups) this.expenseGroups = [];
-                return from(expensePage.content).pipe(
-                    groupBy((expense) => (groupByDate ? expense.date : expense.id)),
-                    mergeMap((group) => group.pipe(toArray())),
-                );
-            }),
-        )
-        .subscribe({
-            next: (expenses: Expense[]) => {
-                const expenseGroup: ExpenseGroup = {
-                    date: expenses[0].date,
-                    expenses: this.sortExpenses(expenses),
-                };
-                const expenseGroupWithSameDate = this.expenseGroups!.find((other) => other.date === expenseGroup.date);
-                if (!expenseGroupWithSameDate || !groupByDate) this.expenseGroups!.push(expenseGroup);
-                else
-                    expenseGroupWithSameDate.expenses = this.sortExpenses([
-                        ...expenseGroupWithSameDate.expenses,
-                        ...expenseGroup.expenses,
-                    ]);
+    }
+
+    ngOnInit(): void {
+        this.loadCategories();
+        this.initializeDate();
+        this.subscribeToSearchFormChanges();
+    }
+
+    private initializeDate(): void {
+        this.date = set(new Date(), { date: 1 });
+    }
+
+    private subscribeToSearchFormChanges(): void {
+        this.searchFormSubscription = this.searchForm.valueChanges
+            .pipe(debounce((value) => interval(value.name?.length ? 400 : 0)))
+            .subscribe((value) => {
+                this.updateSearchCriteria(value);
+                this.loadExpenses();
+            });
+    }
+
+    private updateSearchCriteria(value: any): void {
+        this.searchCriteria = { ...this.searchCriteria, ...value, page: 0 };
+    }
+
+    async loadCategories() {
+        console.log("load");
+        this.categoryService.getCategories(this.searchCriteria).subscribe({
+            next: (categories) => {
+                this.categories.push(...categories.content);
             },
-            error: (error) => this.toastService.displayErrorToast('Could not load expenses', error),
+            error: (error) => this.toastService.displayErrorToast('Could not load categories', error),
         });
-}
+    }
 
-    private sortExpenses = (expenses: Expense[]): Expense[] => expenses.sort((a, b) => a.name.localeCompare(b.name)); */
+
+    addMonths = (number: number): void => {
+        this.date = addMonths(this.date, number);
+        this.loadExpenses();
+    };
+    changeMonth(months: number): void {
+        this.currentMonth = addMonths(this.currentMonth, months);
+        const yearMonth = this.datePipe.transform(this.currentMonth, 'yyyyMM');
+        this.searchCriteria = { ...this.searchCriteria, yearMonth: +yearMonth!, page: 0 , sort: 'date,desc'};
+        this.loadExpenses();
+    }
+
+    async openModal(expense?: Expense): Promise<void> {
+        const modal = await this.modalCtrl.create({
+            component: ExpenseModalComponent,
+            componentProps: { expense: expense ? { ...expense } : {} },
+        });
+        await modal.present();
+        const { role } = await modal.onWillDismiss();
+        this.reloadExpenses();
+        console.log('role', role);
+    }
+
+    private loadExpenses(next: () => void = () => {}): void {
+        if (!this.searchCriteria.name) delete this.searchCriteria.name;
+        this.loading = true;
+        this.expenseService
+            .getExpenses(this.searchCriteria)
+            .pipe(
+                finalize(() => {
+                    this.loading = false;
+                    next();
+                }),
+            )
+            .subscribe({
+                next: (expenses) => {
+                    if (this.searchCriteria.page === 0 || !this.expenses) {
+                        this.expenses = [];
+                    }
+                    this.expenses.push(...expenses.content);
+                    this.lastPageReached = expenses.last;
+                },
+                error: (error) => this.toastService.displayErrorToast('Could not load expenses', error),
+            });
+    }
+
+
+    ionViewDidEnter(): void {
+        this.loadExpenses();
+    }
+
+    ionViewDidLeave(): void {
+        this.searchFormSubscription.unsubscribe();
+    }
 
     loadNextExpensePage($event: any) {
         this.searchCriteria.page++;
@@ -105,21 +151,4 @@ private loadExpenses(next: () => void = () => {}): void {
         this.loadExpenses(() => ($event ? ($event as RefresherCustomEvent).target.complete() : {}));
     }
 
-  ionViewDidEnter(): void {
-    this.loadExpenses();
-  }
-  addMonths = (number: number): void => {
-    this.date = addMonths(this.date, number);
-  };
-
-    async openModal(expense?: Expense): Promise<void> {
-        const modal = await this.modalCtrl.create({
-            component: ExpenseModalComponent,
-            componentProps: { expense: expense ? { ...expense } : {} },
-        });
-        modal.present();
-        const { role } = await modal.onWillDismiss();
-        if (role === 'refresh') this.reloadExpenses();
-        // console.log('role', role);
-    }
 }
